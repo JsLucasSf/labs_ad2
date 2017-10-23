@@ -1,4 +1,4 @@
-#Análise de Dados 2
+# Análise de Dados 2
 
 A disciplina de Análise de Dados 2 do curso de Ciência da Computação na UFCG, cobre conceitos e técnicas de aprendizagem de máquina voltadas à modelagem preditiva de dados. Este repositório contém minhas soluções para as atividades de laboratório realizadas durante a disciplina.
 
