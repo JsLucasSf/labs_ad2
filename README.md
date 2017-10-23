@@ -6,6 +6,8 @@ A disciplina de Análise de Dados 2 do curso de Ciência da Computação na UFCG
 
 The Data Analysys 2 course in Computer Science at UFCG, covers Machine Learning concepts and techniques, to be used in the Predictive Data Analysis. This repository contains my solutions to the lab activities done during this course.
 
-* Período: 2017.2
+---
+
+* Período: 2015.2
 * Aluno: José Lucas Silva Freitas
 * Matrícula: 112210086
