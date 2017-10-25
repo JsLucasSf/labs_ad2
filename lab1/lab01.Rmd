@@ -1,0 +1,85 @@
+---
+title: "Análise de Gastos de Deputados: Nossas Perguntas"
+author: Js Lucas
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+```{r}
+library(dplyr)
+library(plotly)
+library(readr)
+library(knitr)
+
+dados_ceap <- read_csv('dados/dadosCEAP.csv')
+#dados_ceap$valorGlosa <- as.numeric(sub(",", ".", dados_ceap$valorGlosa, fixed = TRUE)) 
+```
+
+Para esta análise, usamos os dados da CEAP (cota para o exercício da atividade parlamentar), uma cota única mensal destinada a custear os gastos dos deputados vinculados ao exercício da atividade parlamentar. Exemplos de despesa desse tipo são: passagens aéreas, telefonia, serviços postais e etc. Mais informações neste [link](http://www2.camara.leg.br/transparencia/acesso-a-informacao/copy_of_perguntas-frequentes/cota-para-o-exercicio-da-atividade-parlamentar). Os dados foram coletados do site de transparência da Câmara.
+
+# Quais os partidos que mais fazem uso da CEAP? Quais os partidos que menos fazem uso?
+
+Inicialmente, iremos analisar os gastos por partido.
+
+```{r}
+gastos_partido <- dados_ceap %>% 
+  group_by(sgPartido) %>% 
+  summarize(ocorrencias = n()) %>% 
+  na.omit()
+
+gastos_partido_reais <- dados_ceap %>%
+  group_by(sgPartido) %>% 
+  summarize(total_gastos = sum(valorDocumento)) %>% 
+  na.omit()
+```
+
+Em alguns registros dos dados que utilizamos, a informação de partido não está presente, para lidar com isso, removeremos estes para proceder com nossa análise.
+
+```{r}
+gastos_partido$sgPartido <- factor(gastos_partido$sgPartido, levels = gastos_partido$sgPartido[order(gastos_partido$ocorrencias)])
+
+gastos_partido %>% 
+  plot_ly(x = ~sgPartido, y = ~ocorrencias) %>% 
+  add_bars() %>% 
+  layout(
+    xaxis = list(title = "Partido"),
+    yaxis = list(title = "Número de vezes em que um gasto ocorreu")
+  )
+```
+
+De acordo com esta visualização, podemos ver que PT, PMDB e PSDB são os partidos que mais possuem registros de gastos da CEAP.
+
+```{r}
+kable(head(gastos_partido[order(gastos_partido$ocorrencias, decreasing = TRUE), ], 5),
+      caption = "Top 5 partidos com mais registros de gastos",
+      col.names = c("Partido", "Número de Ocorrências"),
+      align = c('c'))
+```
+
+Agora observamos o valor gasto por cada partido.
+
+```{r}
+gastos_partido_reais$sgPartido <- factor(gastos_partido_reais$sgPartido, levels = gastos_partido_reais$sgPartido[order(gastos_partido_reais$total_gastos)])
+
+gastos_partido_reais %>% 
+  plot_ly(x = ~sgPartido, y = ~total_gastos) %>% 
+  add_bars() %>% 
+  layout(
+    xaxis = list(title = "Partido"),
+    yaxis = list(title = "Valor total gasto (em milhões)")
+  )
+```
+
+Com apenas algumas alterações na ordem, os três maiores partidos do país continuam liderando nosso ranking.
+
+```{r}
+kable(head(gastos_partido_reais[order(gastos_partido_reais$total_gastos, decreasing = TRUE), ], 5),
+      caption = "Top 5 partidos com mais registros de gastos",
+      col.names = c("Partido", "Valor gasto"),
+      align = c('c'))
+```
+
