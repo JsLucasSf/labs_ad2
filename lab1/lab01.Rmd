@@ -162,4 +162,59 @@ Mais uma vez PT e PMDB se mantém no topo da lista, uma observação no entanto,
 ```
 
 
+---
+
+# Quais os parlamentares que mais gastam com CEAP? Quais os que menos gastam?
+
+Agora vamos apontar nomes, quais são os deputados mais gastadores?
+```{r}
+gastos_deputado <- dados_ceap %>% 
+  group_by(nomeParlamentar) %>% 
+  summarize(total_gastos = sum(valorDocumento)) %>% 
+  na.omit()
+
+gastos_deputado %>% plot_ly(y = ~total_gastos, x = ~nomeParlamentar) %>% 
+  add_markers() %>% 
+  layout(xaxis = list(showticklabels = FALSE, title = "Parlamentar"),
+         yaxis = list(title = "Valor gasto em milhões"))
+```
+
+A partir desta visualização, podemos observar que existem dois grandes grupos de parlamentares, o primeiro grupo é composto por parlamentares que tem gastos muito próximos de 0, outra grande massa de parlamentares tem gastos próximos de 1,3 milhões. Entretanto, alguns pontos chamam atenção por estarem muito acima dos demais, vamos olhar mais de perto os deputados que gastaram mais que 1,5 milhões.
+
+```{r}
+gastos_deputado %>% plot_ly(y = ~total_gastos, x = ~nomeParlamentar) %>% 
+  add_markers() %>% 
+  layout(xaxis = list(showticklabels = FALSE, title = "Parlamentar"),
+         yaxis = list(range = c(1500000, 2000000), title = "Valor gasto em milhões"))
+```
+
+Vemos então, que os campeões de gastos são os parlamentares **Francisco Chapadinha**, **Macedo** e **Silas Câmara**.
+Por outro lado, muitos possuem gastos próximos de zero, para conhecê-los e facilitar a visualização, interaja com o gráfico a seguir.
+
+```{r}
+gastos_deputado %>% plot_ly(y = ~total_gastos, x = ~nomeParlamentar) %>% 
+  add_markers() %>% 
+  layout(xaxis = list(showticklabels = FALSE, title = "Parlamentar"),
+         yaxis = list(range = c(0, 50000), title = "Valor gasto em milhões"))
+
+rm(gastos_deputado)
+```
+
+---
+
+# Existe correlação entre a quantidade de gastos no exterior e o valor restituído da CEAP? 
+
+Para responder esta pergunta, vamos observar a distribuição dos dados.
+Primeiro os dados foram agrupados por data e calculamos quantos gastos no exterior e o valor de glosa para cada data.
+Agora queremos visualizar a correlação entre a quantidade de gastos no exterior, e o valor da glosa, portanto, vamos visualizar no eixo horizontal, o crescimento de ocorrências de gastos no exterior (em datas distintas) e no eixo vertical, o valor de glosa acumulado naquelas ocasiões.
+```{r}
+restituicao <- subset(dados_ceap, tipoDocumento == 2) %>%
+  group_by(dataEmissao) %>% 
+  summarize(ocorrencias = n(), total_glosa = sum(valorGlosa)) %>% 
+  na.omit()
+
+restituicao %>% plot_ly(x = ~ocorrencias, y = ~total_glosa) %>% 
+  add_markers() %>% 
+  layout(xaxis = list(title = "Ocorrências de gastos no exterior"))
+```
 
