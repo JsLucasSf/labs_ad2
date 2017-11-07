@@ -1,0 +1,281 @@
+---
+title: "Análise de Gastos de Deputados: Nossas Perguntas"
+author: Js Lucas
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+```{r}
+library(dplyr)
+library(plotly)
+library(readr)
+library(knitr)
+library(googledrive)
+library(rgdal)
+library(leaflet)
+library(curl)
+
+if(!file.exists("./dados/dadosCEAP.csv")){
+  drive_download("dadosCEAP.csv", path = "./dados/dadosCEAP.csv")  
+}
+dados_ceap <- read_csv('dados/dadosCEAP.csv')
+dados_ceap$valorGlosa <- as.numeric(sub(",", ".", dados_ceap$valorGlosa, fixed = TRUE))
+```
+
+Para esta análise, usamos os dados da CEAP (cota para o exercício da atividade parlamentar), uma cota única mensal destinada a custear os gastos dos deputados vinculados ao exercício da atividade parlamentar. Exemplos de despesa desse tipo são: passagens aéreas, telefonia, serviços postais e etc. Mais informações neste [link](http://www2.camara.leg.br/transparencia/acesso-a-informacao/copy_of_perguntas-frequentes/cota-para-o-exercicio-da-atividade-parlamentar). Os dados foram coletados do site de transparência da Câmara.
+
+# Quais os partidos que mais fazem uso da CEAP? Quais os partidos que menos fazem uso?
+
+Inicialmente, iremos analisar os gastos por partido.
+
+```{r}
+gastos_partido <- dados_ceap %>%
+  group_by(sgPartido) %>%
+  summarize(ocorrencias = n()) %>%
+  na.omit()
+
+gastos_partido_reais <- dados_ceap %>%
+  group_by(sgPartido) %>%
+  summarize(total_gastos = sum(valorDocumento)) %>%
+  na.omit()
+```
+
+Em alguns registros dos dados que utilizamos, a informação de partido não está presente, para lidar com isso, removeremos estes para proceder com nossa análise.
+
+```{r}
+gastos_partido$sgPartido <- factor(gastos_partido$sgPartido, levels = gastos_partido$sgPartido[order(gastos_partido$ocorrencias)])
+
+gastos_partido %>%
+  plot_ly(x = ~ocorrencias, y = ~sgPartido) %>%
+  add_bars() %>%
+  layout(
+    yaxis = list(title = "Partido"),
+    xaxis = list(title = "Número de gastos")
+  )
+```
+
+De acordo com esta visualização, podemos ver que PT, PMDB e PSDB são os partidos que mais possuem registros de gastos da CEAP.
+
+```{r}
+kable(head(gastos_partido[order(gastos_partido$ocorrencias, decreasing = TRUE), ], 5),
+      caption = "Top 5 partidos com mais registros de gastos",
+      col.names = c("Partido", "Número de Ocorrências"),
+      align = c('c'))
+
+rm(gastos_partido)
+```
+
+Agora observamos o valor gasto por cada partido.
+
+```{r}
+gastos_partido_reais$sgPartido <- factor(gastos_partido_reais$sgPartido, levels = gastos_partido_reais$sgPartido[order(gastos_partido_reais$total_gastos)])
+
+gastos_partido_reais %>%
+  plot_ly(x = ~total_gastos, y = ~sgPartido) %>%
+  add_bars() %>%
+  layout(
+    yaxis = list(title = "Partido"),
+    xaxis = list(title = "Valor total gasto (em milhões)")
+  )
+```
+
+Com apenas algumas alterações na ordem, os três maiores partidos do país continuam liderando nosso ranking.
+
+```{r}
+kable(head(gastos_partido_reais[order(gastos_partido_reais$total_gastos, decreasing = TRUE), ], 5),
+      caption = "Top 5 partidos com mais registros de gastos",
+      col.names = c("Partido", "Valor gasto"),
+      align = c('c'))
+
+rm(gastos_partido_reais)
+```
+
+---
+
+# Quais os tipos de despesas mais comuns no uso da CEAP?
+
+Agora buscamos entender melhor, como o dinheiro da CEAP é utilizado, tentando identificar o objeto dos seus gastos.
+
+```{r}
+tipos_despesas <- dados_ceap %>%
+  group_by(tipoDespesa) %>%
+  summarize(ocorrencias = n()) %>%
+  na.omit()
+
+tipos_despesas %>%
+  plot_ly(values = ~ocorrencias, labels = ~tipoDespesa) %>%
+  add_pie(hole = 0.5)
+
+rm(tipos_despesas)
+```
+
+Interagindo um pouco com a visualização acima, percebemos que Emissão de bilhetes aéreos e combustíveis são os tipos de gastos que são mais frequentes. Será porém, que são os mais aos cofres públicos?
+
+```{r}
+valor_tipo <- dados_ceap %>%
+  group_by(tipoDespesa) %>%
+  summarize(total_gastos = sum(valorDocumento)) %>%
+  na.omit()
+
+valor_tipo %>%
+  plot_ly(values = ~total_gastos, labels = ~tipoDespesa) %>%
+  add_pie(hole = 0.5)
+
+rm(valor_tipo)
+```
+
+Através desta visualização, podemos ver que as coisas mudaram um pouco, a maior parte dos gastos da CEAP vem de divulgação da atividade parlamentar. Será que este é um gasto justificável? Podemos explorá-lo um pouco mais e descobrir que partidos gastam mais com divulgação.
+
+```{r}
+divulgacao_partido <- subset(dados_ceap, dados_ceap$tipoDespesa == "DIVULGAÇÃO DA ATIVIDADE PARLAMENTAR.") %>%
+  group_by(sgPartido) %>%
+  summarize(total_gastos = sum(valorDocumento)) %>%
+  na.omit()
+
+divulgacao_partido$sgPartido <- factor(divulgacao_partido$sgPartido, levels = divulgacao_partido$sgPartido[order(divulgacao_partido$total_gastos)])
+
+divulgacao_partido %>%
+  plot_ly(x = ~total_gastos, y = ~sgPartido) %>%
+  add_bars() %>%
+  layout(
+    yaxis = list(title = "Partido"),
+    xaxis = list(title = "Valor total gasto (em milhões)")
+  )
+
+rm(divulgacao_partido)
+```
+
+Mais uma vez PT e PMDB se mantém no topo da lista, uma observação no entanto, vai para o PP e o PR, que agora estão entre os que mais gastam com divulgação, em terceiro e quarto lugar respectivamente.
+
+---
+
+# Quais os estados que mais fazem uso da CEAP?
+
+```{r}
+gastos_estado <- dados_ceap %>%
+  group_by(sgUF) %>%
+  summarize(ocorrencias = n(), total_gastos = sum(valorDocumento)) %>%
+  na.omit()
+
+mapa_brasil <- readOGR("../utils/mapa/BRUFE250GC_SIR.shp")
+gastos_estado$sgUF[gastos_estado$sgUF=='AC'] <- 'ACRE'
+gastos_estado$sgUF[gastos_estado$sgUF=='AL'] <- 'ALAGOAS'
+gastos_estado$sgUF[gastos_estado$sgUF=='AP'] <- 'AMAPÁ'
+gastos_estado$sgUF[gastos_estado$sgUF=='AM'] <- 'AMAZONAS'
+gastos_estado$sgUF[gastos_estado$sgUF=='BA'] <- 'BAHIA'
+gastos_estado$sgUF[gastos_estado$sgUF=='CE'] <- 'CEARÁ'
+gastos_estado$sgUF[gastos_estado$sgUF=='DF'] <- 'DISTRITO FEDERAL'
+gastos_estado$sgUF[gastos_estado$sgUF=='ES'] <- 'ESPÍRITO SANTO'
+gastos_estado$sgUF[gastos_estado$sgUF=='GO'] <- 'GOIÁS'
+gastos_estado$sgUF[gastos_estado$sgUF=='MA'] <- 'MARANHÃO'
+gastos_estado$sgUF[gastos_estado$sgUF=='MT'] <- 'MATO GROSSO'
+gastos_estado$sgUF[gastos_estado$sgUF=='MS'] <- 'MATO GROSSO DO SUL'
+gastos_estado$sgUF[gastos_estado$sgUF=='MG'] <- 'MINAS GERAIS'
+gastos_estado$sgUF[gastos_estado$sgUF=='PA'] <- 'PARÁ'
+gastos_estado$sgUF[gastos_estado$sgUF=='PB'] <- 'PARAÍBA'
+gastos_estado$sgUF[gastos_estado$sgUF=='PR'] <- 'PARANÁ'
+gastos_estado$sgUF[gastos_estado$sgUF=='PE'] <- 'PERNAMBUCO'
+gastos_estado$sgUF[gastos_estado$sgUF=='PI'] <- 'PIAUÍ'
+gastos_estado$sgUF[gastos_estado$sgUF=='RJ'] <- 'RIO DE JANEIRO'
+gastos_estado$sgUF[gastos_estado$sgUF=='RN'] <- 'RIO GRANDE DO NORTE'
+gastos_estado$sgUF[gastos_estado$sgUF=='RS'] <- 'RIO GRANDE DO SUL'
+gastos_estado$sgUF[gastos_estado$sgUF=='RO'] <- 'RONDÔNIA'
+gastos_estado$sgUF[gastos_estado$sgUF=='RR'] <- 'RORAIMA'
+gastos_estado$sgUF[gastos_estado$sgUF=='SC'] <- 'SANTA CATARINA'
+gastos_estado$sgUF[gastos_estado$sgUF=='SP'] <- 'SÃO PAULO'
+gastos_estado$sgUF[gastos_estado$sgUF=='SE'] <- 'SERGIPE'
+gastos_estado$sgUF[gastos_estado$sgUF=='TO'] <- 'TOCANTINS'
+
+mapa_final <- merge(mapa_brasil,gastos_estado, by.x = "NM_ESTADO", by.y = "sgUF")
+
+colors <- colorFactor('OrRd', mapa_final@data$ocorrencias)
+
+leaflet(data = mapa_final) %>%
+  addProviderTiles(providers$Esri.WorldGrayCanvas) %>%
+  addPolygons(opacity = 0.5,
+              weight = 1,
+              fillColor = colors(mapa_final@data$ocorrencias),
+              color = 'black',
+              label = mapa_final@data$NM_ESTADO,
+              popup = paste('Estado: ', mapa_final@data$NM_ESTADO, '</br>Número de despesas: ', mapa_final@data$ocorrencias),
+              fillOpacity = 1)
+```
+
+De acordo com o mapa, podemos observar que os estados Rio de Janeiro e Minas Gerais, são os campeões de uso da CEAP, veremos agora os valores em reais.
+
+```{r}
+colors <- colorFactor('OrRd', mapa_final@data$total_gastos)
+
+leaflet(data = mapa_final) %>%
+  addProviderTiles(providers$Esri.WorldGrayCanvas) %>%
+  addPolygons(opacity = 0.5,
+              weight = 1,
+              fillColor = colors(mapa_final@data$total_gastos),
+              color = 'black',
+              label = mapa_final@data$NM_ESTADO,
+              popup = paste('Estado: ', mapa_final@data$NM_ESTADO, '</br>Total gasto: R$ ', mapa_final@data$total_gastos),
+              fillOpacity = 1)
+```
+
+Considerando o valor em reais, o mapa ainda parece ter a mesma distribuição.
+
+---
+
+# Quais os parlamentares que mais gastam com CEAP? Quais os que menos gastam?
+
+Agora vamos apontar nomes, quais são os deputados mais gastadores?
+```{r}
+gastos_deputado <- dados_ceap %>%
+  group_by(nomeParlamentar) %>%
+  summarize(total_gastos = sum(valorDocumento)) %>%
+  na.omit()
+
+gastos_deputado %>% plot_ly(y = ~total_gastos, x = ~nomeParlamentar) %>%
+  add_markers() %>%
+  layout(xaxis = list(showticklabels = FALSE, title = "Parlamentar"),
+         yaxis = list(title = "Valor gasto em milhões"))
+```
+
+A partir desta visualização, podemos observar que existem dois grandes grupos de parlamentares, o primeiro grupo é composto por parlamentares que tem gastos muito próximos de 0, outra grande massa de parlamentares tem gastos próximos de 1,3 milhões. Entretanto, alguns pontos chamam atenção por estarem muito acima dos demais, vamos olhar mais de perto os deputados que gastaram mais que 1,5 milhões.
+
+```{r}
+gastos_deputado %>% plot_ly(y = ~total_gastos, x = ~nomeParlamentar) %>%
+  add_markers() %>%
+  layout(xaxis = list(showticklabels = FALSE, title = "Parlamentar"),
+         yaxis = list(range = c(1500000, 2000000), title = "Valor gasto em milhões"))
+```
+
+Vemos então, que os campeões de gastos são os parlamentares **Francisco Chapadinha**, **Macedo** e **Silas Câmara**.
+Por outro lado, muitos possuem gastos próximos de zero, para conhecê-los e facilitar a visualização, interaja com o gráfico a seguir.
+
+```{r}
+gastos_deputado %>% plot_ly(y = ~total_gastos, x = ~nomeParlamentar) %>%
+  add_markers() %>%
+  layout(xaxis = list(showticklabels = FALSE, title = "Parlamentar"),
+         yaxis = list(range = c(0, 50000), title = "Valor gasto em milhões"))
+
+rm(gastos_deputado)
+```
+
+---
+
+# Existe correlação entre a quantidade de gastos no exterior e o valor restituído da CEAP?
+
+Para responder esta pergunta, vamos observar a distribuição dos dados.
+Primeiro os dados foram agrupados por data e calculamos quantos gastos no exterior e o valor de glosa para cada data.
+Agora queremos visualizar a correlação entre a quantidade de gastos no exterior, e o valor da glosa, portanto, vamos visualizar no eixo horizontal, o crescimento de ocorrências de gastos no exterior (em datas distintas) e no eixo vertical, o valor de glosa acumulado naquelas ocasiões.
+```{r}
+restituicao <- subset(dados_ceap, tipoDocumento == 2) %>%
+  group_by(dataEmissao) %>%
+  summarize(ocorrencias = n(), total_glosa = sum(valorGlosa)) %>%
+  na.omit()
+
+restituicao %>% plot_ly(x = ~ocorrencias, y = ~total_glosa) %>%
+  add_markers() %>%
+  layout(xaxis = list(title = "Ocorrências de gastos no exterior"))
+```
+Pelo gráfico de dispersão, não parece haver uma correlação direta entre as variáveis, de fato, o valor da correlação é de `r cor(restituicao$ocorrencias, restituicao$total_glosa)`, valor que não configura uma correlação forte.
