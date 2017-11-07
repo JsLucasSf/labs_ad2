@@ -1,0 +1,151 @@
+---
+title: 'Análise de Gastos de Deputados: Suas Perguntas'
+author: "Js Lucas"
+date: "7 de novembro de 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+```{r}
+library(dplyr)
+library(plotly)
+library(readr)
+library(knitr)
+library(googledrive)
+library(rgdal)
+library(leaflet)
+library(curl)
+
+if(!file.exists("./dados/dadosCEAP.csv")){
+  drive_download("dadosCEAP.csv", path = "./dados/dadosCEAP.csv")  
+}
+dados_ceap <- read_csv('dados/dadosCEAP.csv')
+dados_ceap$valorGlosa <- as.numeric(sub(",", ".", dados_ceap$valorGlosa, fixed = TRUE))
+```
+# Qual o comportamento da utilização da CEAP ao longo do tempo?
+
+Agora que já temos uma ideia geral sobre a utilização da CEAP, uma pergunta que pode surgir é, como será que estes gastos se comportam? será que vem crescendo? Buscaremos responder esta pergunta.
+
+```{r}
+dados_ceap$ano <- format(as.Date(dados_ceap$dataEmissao), "%Y")
+
+gastos_anuais <- dados_ceap %>% 
+  group_by(ano) %>% 
+  summarize(valor_total = sum(valorDocumento)) %>% 
+  na.omit()
+
+gastos_anuais %>%  plot_ly(name = "Ano", x = ~ano, y = ~valor_total, type = 'scatter', mode = 'markers',
+                           text = ~paste("Ano: ", ano,
+                                          "<br>Gasto: R$", valor_total)) %>% 
+  add_lines(name = "Valor por ano") %>% 
+  add_trace(name = "Mediana", x = gastos_anuais$ano,  y = median(gastos_anuais$valor_total), mode = 'lines') %>% 
+  layout(xaxis = list(title = "Ano"),
+         yaxis = list(title = "Gasto Total"))
+  
+rm(gastos_anuais)
+```
+Podemos ver então, que houve um aumento significativo nos gastos, no intervalo de 2014 até 2015, entretanto, não podemos nos apressar e tirar conclusões desta informação, de fato, ao observarmos os dados, veremos que possuímos apenas `r nrow(filter(dados_ceap, ano == 2014))` observações referentes ao ano de 2014, portanto, esta diferença se dá pela ausencia de dados. (Da mesma forma, 2017 aparentemente demonstra uma queda nos valores da CEAP, porém obviamente não possuímos dados de todo o ano).
+Podemos também aumentar a granularidade das observações e olhar para os gastos por mês.
+
+```{r}
+dados_ceap$mes <- format(as.Date(dados_ceap$dataEmissao), "%Y-%m")
+
+gastos_mensais <- dados_ceap %>% 
+  group_by(mes) %>% 
+  summarize(valor_total = sum(valorDocumento)) %>% 
+  na.omit()
+
+gastos_mensais %>%  plot_ly(name = "Mês", x = ~mes, y = ~valor_total, type = 'scatter', mode = 'markers',
+                            text = ~paste("Mês: ", mes,
+                                          "<br>Gasto: R$", valor_total)) %>% 
+  add_lines(name = "Valor por mês") %>% 
+  add_trace(name = "Mediana", x = gastos_mensais$mes,  y = median(gastos_mensais$valor_total), mode = 'lines') %>% 
+  layout(xaxis = list(title = "Mês", showticklabels = FALSE),
+         yaxis = list(title = "Gasto Total"))
+
+rm(gastos_mensais)
+```
+
+Apesar de nos ajudar a perceber alguns padrões, como por exemplo, o grande aumento dos gastos em dezembro e a diminuição em janeiro, nada podemos concluir destas duas observações, provavelmente pois não possuímos dados o suficiente para fazer uma comparação de uma escala de tempo ainda maior, entretanto baseados nos dados que possuímos, podemos dizer que os gastos com a CEAP estão estabilizados, acontecendo sempre em torno da mediana dos mesmos.
+
+---
+
+# Quais são os fornecedores "preferidos" dos parlamentares?
+
+Dando sequência a nossa análise de uso da CEAP por parte dos nossos parlamentares, vamos observar os fornecedores beneficiados. Existem fornecedores preferidos? Quais deles recebem mais dinheiro?
+
+```{r}
+fornecedores <- dados_ceap %>%
+#  subset(dados_ceap$tipoDespesa == 'DIVULGAÇÃO DA ATIVIDADE PARLAMENTAR.') %>% 
+  group_by(fornecedor) %>% 
+  summarize(gastos = n(), valor_recebido = sum(valorDocumento)) %>% 
+  na.omit()
+
+fornecedores %>% plot_ly(y = ~valor_recebido, type = 'box')
+```
+
+Se tentarmos visualizar os dados com este boxplot, observamos que a mediana do valor recebido por fornecedor é baixa e que há muitos outliers, vamos tentar melhorar a visualização, aplicando uma transformação logarítmica no eixo y.
+
+```{r}
+fornecedores %>% plot_ly(y = ~valor_recebido, type = 'box') %>% 
+  layout(yaxis = list(type = 'log'))
+```
+Podemos observar agora, que temos vários fornecedores recebendo valores muito acima da média, agora vamos observá-los mais de perto.
+
+```{r}
+subset(fornecedores, fornecedores$valor_recebido > 10000) %>%
+  plot_ly(x = ~fornecedor, y = ~valor_recebido, type = 'scatter') %>% 
+  layout(xaxis = list(title = "Fornecedor", showticklabels = FALSE),
+         yaxis = list(title = 'Valor Total Recebido'))
+
+rm(fornecedores)
+```
+
+Agora podemos observar, que as empresas de passagens aéreas dominam o recebimento de verbas da CEAP, com TAM, Gol, Azul e Avianca respectivamente arrecadando os maiores valores.
+
+# Quais são os grandes fornecedores na divulgação da atividade parlamentar?
+
+Como podemos observar no gráfico abaixo, a maior porcentagem dos gastos da CEAP está concentrada na Divulgação da Atividade Parlamentar.
+
+```{r}
+valor_tipo <- dados_ceap %>%
+  group_by(tipoDespesa) %>%
+  summarize(total_gastos = sum(valorDocumento)) %>%
+  na.omit()
+
+valor_tipo %>%
+  plot_ly(values = ~total_gastos, labels = ~tipoDespesa) %>%
+  add_pie(hole = 0.5)
+
+rm(valor_tipo)
+```
+
+Passagens aéreas são itens de alto custo, portanto é de se esperar que as grandes empresas aéreas dominem o fornecimento geral, entretanto, é interessante observar os grandes fornecedores de serviços de divulgação.
+
+```{r}
+fornecedores <- dados_ceap %>%
+  subset(dados_ceap$tipoDespesa == 'DIVULGAÇÃO DA ATIVIDADE PARLAMENTAR.') %>% 
+  group_by(fornecedor) %>% 
+  summarize(gastos = n(), valor_recebido = sum(valorDocumento)) %>% 
+  na.omit()
+
+fornecedores %>% plot_ly(y = ~valor_recebido, type = 'box') %>% 
+  layout(yaxis = list(type = 'log'))
+```
+Mais uma vez, observamos vários outliers, vamos novamente cortar a visualização, agora na marca de 100 mil, e identificar os grandes fornecedores de material de divulgação.
+
+```{r}
+subset(fornecedores, fornecedores$valor_recebido > 10000) %>%
+  plot_ly(x = ~fornecedor, y = ~valor_recebido, type = 'scatter') %>% 
+  layout(xaxis = list(title = "Fornecedor", showticklabels = FALSE),
+         yaxis = list(title = 'Valor Total Recebido'))
+
+rm(fornecedores)
+```
+
+Nesta visualização, todos os pontos representam fornecedores que receberam valores muito acima da média, entretanto, atenção especial para **InCine Video Ltda** (mais de **dois milhões**), **Josely Fernanda do Nascimento** (1,3 milhões) e **ATOS DOIS PROPAGANDA E PUBLICIDADE LTDA** (1 milhão), pois todos receberam mais de 1 milhão de reais!

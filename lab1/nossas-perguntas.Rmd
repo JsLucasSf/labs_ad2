@@ -113,7 +113,7 @@ tipos_despesas %>%
 rm(tipos_despesas)
 ```
 
-Interagindo um pouco com a visualização acima, percebemos que Emissão de bilhetes aéreos e combustíveis são os tipos de gastos que são mais frequentes. Será porém, que são os mais aos cofres públicos?
+Interagindo um pouco com a visualização acima, percebemos que Emissão de bilhetes aéreos e combustíveis são os tipos de gastos mais frequentes. Será porém, que são os mais aos custosos aos cofres públicos?
 
 ```{r}
 valor_tipo <- dados_ceap %>%
